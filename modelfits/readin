@@ -1,0 +1,165 @@
+# This script pulls various World Bank data source
+#
+#Get this data from, e.g., http://data.worldbank.org/indicator/IP.PAT.NRES
+
+Here="`pwd`"
+Db=$Here/remit.db
+alias QQ="sqlite3 $Db"
+
+download () {
+    cd indata
+    for i in NY.GDP.PCAP.PP.CD IP.JRN.ARTC.SC MS.MIL.XPND.GD.ZS SM.POP.NETM NE.EXP.GNFS.ZS SP.URB.TOTL DT.ODA.ODAT.PC.ZS EG.ELC.ACCS.ZS AG.SRF.TOTL.K2 WP_time_10.1; do
+      curl "http://api.worldbank.org/v2/en/indicator/${i}?downloadformat=csv" > ${i}.zip
+      unzip -o $i.zip
+      mv Metadata* meta/
+    done
+    cd ..
+}
+
+get_one () {
+    mkdir -p indata/meta
+    cd indata
+      echo "http://api.worldbank.org/v2/en/indicator/${1}?downloadformat=csv"
+      curl "http://api.worldbank.org/v2/en/indicator/${1}?downloadformat=csv" > ${1}.zip
+      unzip -o ${1}.zip
+      mv Metadata* meta/
+    echo "CSV=" *${1}*.csv
+    sed -i '1,4d' *${1}*.csv
+    sed -i '1s/ /_/g' *${1}*.csv   #no spaces in colnames, pls
+    sed -i '1s/"\([12]\)/"yr_\1/g' *${1}*.csv  #no numeric colnames; this is just disrespect.
+    
+    apop_text_to_db -eo *${1}*.csv pre_$2 $Db
+   
+sqlite3 $Db "create table $2 (name, code, varname, varcode, year, val)"
+    
+    for y in `seq 1960 2016`; do
+        for c in `sqlite3 $Db "select distinct Country_Code from pre_$2"`; do
+            for ind in `sqlite3 $Db "select distinct Indicator_Code from pre_$2"`; do
+                sqlite3 $Db "insert into $2
+                   select country_name, country_code, indicator_name, indicator_code, '$y',
+                          yr_$y
+                  /* #Replace NaNs with zeros, but in retrospect wtf was I thinking
+                  case when yr_$y is null then 0 else yr_$y end */
+                     from pre_$2 where country_code='$c' and indicator_code ='$ind'"
+            done
+        done
+    done
+
+    cd $Here
+}
+
+download_and_read() {
+#download
+get_one SP.POP.TOTL pop #has to come first.
+get_one NY.GDP.PCAP.PP.CD gdp_per_cap
+get_one IP.JRN.ARTC.SC  journal_publications
+get_one MS.MIL.XPND.GD.ZS military_per_gdp
+get_one SM.POP.NETM net_migration
+get_one NE.EXP.GNFS.ZS exports_per_gdp
+get_one SP.URB.TOTL urban_pop
+get_one DT.ODA.ODAT.PC.ZS official_dev_assistance_usd
+get_one EG.ELC.ACCS.ZS electricity_access
+get_one AG.SRF.TOTL.K2 surface_area_sq_km
+get_one WP_TIME_10.1 bank_account_pct
+}
+
+build(){
+
+for tab in pop gdp_per_cap journal_publications military_per_gdp net_migration exports_per_gdp urban_pop official_dev_assistance_usd electricity_access surface_area_sq_km bank_account_pct ; do 
+  QQ "delete from $tab where name in ('Eritrea', 'Not classified')" #missing pop in 2016--bad sign
+done
+
+echo "table drops <<<<<<"
+QQ "drop table remits_out" 2&>/dev/null
+QQ "drop table remits_in" 2&>/dev/null
+QQ "drop table net_remits" 2&>/dev/null
+QQ "drop table total_remits" 2&>/dev/null
+QQ "drop table dataset" 2&>/dev/null
+QQ "drop table averages" 2&>/dev/null
+echo ">>>>>>"
+
+sqlite3 remit.db "create table net_remits as select i.namein, i.nameout, (o.remitted - i.remitted)>0 is_net_in, o.remitted - i.remitted diff from remit_tab i, remit_tab o where i.namein = o.nameout and i.nameout = o.namein and (diff>1 or diff<-1)"
+
+
+QQ "create table total_remits as select namein, sum(diff) as diff from
+                (select i.namein, o.remitted - i.remitted diff from remit_tab i, remit_tab o where i.namein = o.nameout and i.nameout = o.namein /*and (diff>1 or diff<-1)*/) group by namein"
+
+echo -n "Possible ignorable error here: "
+apop_plot_query -n remit.db "create table averages as
+    select pop.name, pop.code, pop.val as pop, gdp.val as gdp, log(gdp.val) as log_gdp, ea.val as electricity_access,
+    eg.val as exports_per_gdp, up.val as urban_pop,
+    jpub.val/pop.val as journal_publications_per_cap, jpub.val as journal_publications,
+    nm.val as net_migration,
+    surf.val as surface_area_sq_km, log(surf.val) as ln_surface_area_sq_km,
+    urb.val as urban_pop
+from
+    (select name, code, avg(val) val from pop where val is not null group by code) pop,
+    (select name, code, avg(val) val from gdp_per_cap where val is not null group by code) gdp,
+    (select name, code, avg(val) val from electricity_access where val is not null group by code) ea,
+    (select name, code, avg(val) val from exports_per_gdp where val is not null group by code) eg,
+    (select name, code, avg(val) val from urban_pop where val is not null group by code) up,
+    (select name, code, avg(val) val from net_migration where val is not null group by code) nm,
+    (select name, code, avg(val) val from surface_area_sq_km where val is not null group by code) surf,
+    (select name, code, avg(val) val from journal_publications where val is not null group by code) jpub,
+    (select name, code, avg(val) val from urban_pop where val is not null group by code) urb
+where
+    pop.code = gdp.code and
+    pop.code = ea.code and
+    pop.code = eg.code and
+    pop.code = up.code and
+    pop.code = nm.code and
+    pop.code = surf.code and
+    pop.code = jpub.code and
+    pop.code = urb.code
+" 2> /dev/null
+
+sqlite3 $Db "create table dataset as
+            select (total_remits.diff >1) as has_net_in, averages.*
+from averages, total_remits
+where averages.name=total_remits.namein
+"
+QQ "delete from dataset where name='World'"
+
+sqlite3 remit.db "create table remits_out as select *, sum(remitted) as remits_out from dataset, remit_tab where dataset.name=remit_tab.nameout and pop is not null group by remit_tab.nameout"
+
+sqlite3 remit.db "create table remits_in as select *, sum(remitted) as remits_in from dataset, remit_tab where dataset.name=remit_tab.namein and pop is not null group by remit_tab.namein"
+
+
+too_much_missing_data="
+    (select name, code, avg(val) val from official_dev_assistance_usd where val is not null group by code) odev,
+    pop.code = odev.code and
+    (select name, code, avg(val) val from military_per_gdp where val is not null group by code) mpg,
+    pop.code = mpg.code and
+    /* (select name, code, avg(val) val from bank_account_pct where val is not null group by code) bap,*/
+    /* pop.code = bap.code and */
+"
+
+}
+
+plot_a_country(){
+    sqlite3 $Db "select year, nrespat from stats where code='$1' and year+0.0>1985 and year+0.0<=2015" | sed 's/|/, /' > plotme
+    sqlite3 $Db "select year, jrnlpubs from stats where code='$1' and year+0.0>1985 and year+0.0<=2015" | sed 's/|/, /' > plotme2
+    sqlite3 $Db "select year, privpat from stats where code='$1' and year+0.0>1985 and year+0.0<=2015" | sed 's/|/, /' > plotme3
+    for i in plotme plotme2 plotme3; do sed -i '/201[45], 0/d' $i; done  #if 2014/15 is a zero, it messes up the plot.
+    gnuplot -e 'set term dumb;
+    plot "plotme" w l lt 1 title "Nonresdent patents";
+    replot "plotme2" w l lt 3 title "Journal pubs";
+    set term png; set out "'${1}'.png";
+    replot "plotme3" w l lt 6 title "Resdent patents";
+    '
+}
+
+make out/tab_checks/have_remit_tab  #I started with a makefile, but abandoned it...
+
+mkdir -p indata
+download_and_read
+build
+#plot_a_country ALB
+#plot_a_country MNE
+#plot_a_country TUN
+#plot_a_country MAR
+#plot_a_country BOL
+#plot_a_country VUT
+#plot_a_country URY
+#plot_a_country GRC
+#plot_a_country TUR

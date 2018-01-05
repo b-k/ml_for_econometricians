@@ -1,0 +1,103 @@
+\ProvidesPackage{beamerthemefoiltex}[2010/07/25 v1.0 for beamer 3.01]
+
+% A very minimalist beamer theme, which is intended to look like a FoilTeX presentation
+% See: http://www.ctan.org/tex-archive/macros/latex/contrib/foiltex/
+% 
+% Usage:
+%
+% \documentclass{beamer}
+% \usetheme{foiltex}
+% ...
+% 
+% Andrew Raim <araim1@umbc.edu>
+
+\mode<presentation>
+
+\useinnertheme{default}
+
+\setbeamertemplate{itemize item}[circle]
+\setbeamertemplate{frametitle}[default][center]
+\setbeamertemplate{navigation symbols}{}
+
+\setbeamercolor{item}{fg = black}
+\setbeamercolor{frametitle}{fg = blue}
+\setbeamercolor{title}{fg = blue}
+\setbeamercolor{section in toc}{fg = black}
+
+% Set the colors for the infobar at the bottom
+\setbeamercolor{palette primary}{fg = black}
+\setbeamercolor{palette secondary}{fg = black}
+\setbeamercolor{palette tertiary}{fg = black}
+\setbeamercolor{primary tertiary}{fg = black}
+
+% Set the colors for bib entries
+\setbeamertemplate{bibliography item}[text]
+\setbeamercolor{bibliography entry author}{fg = black}
+\setbeamercolor{bibliography entry title}{fg = black}
+\setbeamercolor{bibliography entry journal}{fg = black}
+\setbeamercolor{bibliography entry note}{fg = black}
+\setbeamercolor{bibliography entry}{fg = black}
+\setbeamercolor{bibliography entry article}{fg = black}
+\setbeamercolor{bibliography entry book}{fg = black}
+\setbeamercolor{bibliography entry location}{fg = black}
+
+
+\setbeamerfont{title}{series=\bfseries, size = \large}
+\setbeamerfont{frametitle}{series=\bfseries, size=\large}
+\setbeamerfont{author}{series=\bfseries, size = \normalsize}
+\setbeamerfont{institute}{size = \normalsize}
+
+% Take away *most* of the indentation from the "description" list environment
+\setbeamersize{description width=0mm}
+
+% The following Footline code was adapated from Dr. Rostamian's UMBC Footline
+% the default contents of footline
+% author(institute)		title		section::subsection		page/pagetotal
+\newcommand{\my@footline}{%
+  \insertshortauthor \insertshortinstitute
+  \hfill
+  \insertshorttitle
+  \hfill
+  \insertsection
+  \ifx\insertsubsection\@empty\else::\insertsubsection\fi
+  \hfill
+  \insertframenumber/\inserttotalframenumber}
+
+\setbeamertemplate{footline}{%
+  \usebeamerfont{structure}
+  \begin{beamercolorbox}[wd=\paperwidth,ht=2.25ex,dp=1ex]{palette secondary}%
+    \Tiny\hspace*{4mm}\my@footline\hspace{4mm}
+  \end{beamercolorbox}}
+
+% The user can override the default \my@footline by \setfootline{whatever}
+\newcommand{\setfootline}[1]{\renewcommand{\my@footline}{#1}}
+
+
+% Uncomment these to widen the margins
+%\setbeamersize{text margin left=5mm}
+%\setbeamersize{text margin right=5mm}
+
+
+\newenvironment{Witemize}[1][15pt]
+{\begin{itemize}
+  \setlength{\itemsep}{#1}
+  \setlength{\parskip}{0pt}
+  \setlength{\parsep}{0pt}}
+{\end{itemize}}
+
+\newenvironment{Wenumerate}[1][15pt]
+{\begin{enumerate}
+  \setlength{\itemsep}{#1}
+  \setlength{\parskip}{0pt}
+  \setlength{\parsep}{0pt}}
+{\end{enumerate}}
+
+\newenvironment{Wdescription}[1][15pt]
+{\begin{description}
+  \setlength{\itemsep}{#1}
+  \setlength{\parskip}{0pt}
+  \setlength{\parsep}{0pt}}
+{\end{description}}
+
+
+\mode<all>
